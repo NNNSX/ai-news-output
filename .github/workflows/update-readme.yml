@@ -1,7 +1,7 @@
 name: Update README
 
 on:
-  # 每天凌晨1点自动运行（UTC时间，对应北京时间早上9点）
+  # 每天凌晨2点自动运行（UTC时间，对应北京时间早上10点）
   schedule:
     - cron: '0 2 * * *'
   
@@ -33,7 +33,7 @@ jobs:
     
     - name: Generate README
       run: |
-        python3 << 'EOF'
+        python3 << 'PYTHON_SCRIPT_EOF'
         import os
         import re
         from datetime import datetime
@@ -89,59 +89,72 @@ jobs:
             year_month = f['date_obj'].strftime('%Y年%m月')
             grouped[year_month].append(f)
         
-        # 生成README内容
-        readme_content = """# 📰 AI 资讯日报
-
-每日精选人工智能领域最新资讯，涵盖商业、工业、学术界三大领域。
-
-> 🕐 每天自动更新 | 📂 按日期归档 | 🔗 点击标题阅读详情
-
----
-
-"""
+        # 生成README内容 - 使用列表拼接避免引号冲突
+        lines = []
+        lines.append('# 📰 AI 资讯日报')
+        lines.append('')
+        lines.append('每日精选人工智能领域最新资讯，涵盖商业、工业、学术界三大领域。')
+        lines.append('')
+        lines.append('> 🕐 每天自动更新 | 📂 按日期归档 | 🔗 点击标题阅读详情')
+        lines.append('')
+        lines.append('---')
+        lines.append('')
         
         # 最新资讯（最近7天）
-        readme_content += "## 🆕 最新资讯（最近7天）\\n\\n"
+        lines.append('## 🆕 最新资讯（最近7天）')
+        lines.append('')
         recent_files = files[:7]
         for f in recent_files:
-            readme_content += f"- **[{f['date']}](content/{f['filename']})** - {f['title']}\\n"
+            lines.append(f"- **[{f['date']}](content/{f['filename']})** - {f['title']}")
             if f['summary']:
-                readme_content += f"  - {f['summary']}\\n"
+                lines.append(f"  - {f['summary']}")
         
-        readme_content += "\\n---\\n\\n"
+        lines.append('')
+        lines.append('---')
+        lines.append('')
         
         # 按月份分类
-        readme_content += "## 📂 按月份浏览\\n\\n"
+        lines.append('## 📂 按月份浏览')
+        lines.append('')
         for year_month in sorted(grouped.keys(), reverse=True):
-            readme_content += f"### {year_month}\\n\\n"
+            lines.append(f'### {year_month}')
+            lines.append('')
             for f in grouped[year_month]:
-                readme_content += f"- [{f['date']}](content/{f['filename']}) - {f['title']}\\n"
-            readme_content += "\\n"
+                lines.append(f"- [{f['date']}](content/{f['filename']}) - {f['title']}")
+            lines.append('')
         
         # 统计信息
-        readme_content += "---\\n\\n"
-        readme_content += "## 📊 统计信息\\n\\n"
-        readme_content += f"- 📄 总资讯数：**{len(files)}** 篇\\n"
+        lines.append('---')
+        lines.append('')
+        lines.append('## 📊 统计信息')
+        lines.append('')
+        lines.append(f'- 📄 总资讯数：**{len(files)}** 篇')
         if files:
-            readme_content += f"- 📅 最早日期：{files[-1]['date']}\\n"
-            readme_content += f"- 🔄 最近更新：{files[0]['date']}\\n"
-        readme_content += "\\n"
+            lines.append(f'- 📅 最早日期：{files[-1]["date"]}')
+            lines.append(f'- 🔄 最近更新：{files[0]["date"]}')
+        lines.append('')
         
         # 标签
-        readme_content += "## 🏷️ 标签\\n\\n"
-        readme_content += "`#ai` `#artificial-intelligence` `#daily-news` `#tech` `#machine-learning`\\n"
-        readme_content += "\\n"
+        lines.append('## 🏷️ 标签')
+        lines.append('')
+        lines.append('`#ai` `#artificial-intelligence` `#daily-news` `#tech` `#machine-learning`')
+        lines.append('')
         
         # 自动生成时间
-        readme_content += "---\\n\\n"
-        readme_content += f"*📅 本页面由 GitHub Actions 自动生成于 {datetime.now().strftime(\"%Y-%m-%d %H:%M:%S UTC\")}*\\n"
+        lines.append('---')
+        lines.append('')
+        now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')
+        lines.append(f'*📅 本页面由 GitHub Actions 自动生成于 {now_str}*')
+        
+        # 合并为最终内容
+        readme_content = '\n'.join(lines)
         
         # 写入README
         with open('README.md', 'w', encoding='utf-8') as f:
             f.write(readme_content)
         
-        print(f"✅ README.md 已生成，共 {len(files)} 篇资讯")
-        EOF
+        print(f'✅ README.md 已生成，共 {len(files)} 篇资讯')
+        PYTHON_SCRIPT_EOF
     
     - name: Check for changes
       id: check_changes
