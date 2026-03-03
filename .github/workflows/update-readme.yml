@@ -1,0 +1,166 @@
+name: Update README
+
+on:
+  # 每天凌晨1点自动运行（UTC时间，对应北京时间早上9点）
+  schedule:
+    - cron: '0 2 * * *'
+  
+  # 允许手动触发
+  workflow_dispatch:
+  
+  # 当有新文件推送到main分支时触发
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'content/**.md'
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Generate README
+      run: |
+        python3 << 'EOF'
+        import os
+        import re
+        from datetime import datetime
+        from collections import defaultdict
+
+        # 获取所有内容文件
+        content_dir = 'content'
+        files = []
+        
+        if os.path.exists(content_dir):
+            for f in os.listdir(content_dir):
+                if f.endswith('-ai-news.md'):
+                    # 从文件名提取日期: YYYY-MM-DD-ai-news.md
+                    match = re.match(r'(\d{4}-\d{2}-\d{2})-ai-news\.md', f)
+                    if match:
+                        date_str = match.group(1)
+                        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+                        
+                        # 尝试读取文件中的标题和摘要
+                        title = f"AI资讯简报 - {date_str}"
+                        summary = ""
+                        try:
+                            with open(os.path.join(content_dir, f), 'r', encoding='utf-8') as file:
+                                content = file.read()
+                                # 从frontmatter提取标题
+                                title_match = re.search(r'title:\s*(.+)', content)
+                                if title_match:
+                                    title = title_match.group(1).strip()
+                                # 提取第一行非空内容作为摘要
+                                lines = content.split('\n')
+                                for line in lines:
+                                    line = line.strip()
+                                    if line and not line.startswith('#') and not line.startswith('---') and not line.startswith('title:'):
+                                        summary = line[:80] + '...' if len(line) > 80 else line
+                                        break
+                        except:
+                            pass
+                        
+                        files.append({
+                            'date': date_str,
+                            'date_obj': date_obj,
+                            'filename': f,
+                            'title': title,
+                            'summary': summary
+                        })
+        
+        # 按日期倒序排列
+        files.sort(key=lambda x: x['date_obj'], reverse=True)
+        
+        # 按年月分组
+        grouped = defaultdict(list)
+        for f in files:
+            year_month = f['date_obj'].strftime('%Y年%m月')
+            grouped[year_month].append(f)
+        
+        # 生成README内容
+        readme_content = """# 📰 AI 资讯日报
+
+每日精选人工智能领域最新资讯，涵盖商业、工业、学术界三大领域。
+
+> 🕐 每天自动更新 | 📂 按日期归档 | 🔗 点击标题阅读详情
+
+---
+
+"""
+        
+        # 最新资讯（最近7天）
+        readme_content += "## 🆕 最新资讯（最近7天）\\n\\n"
+        recent_files = files[:7]
+        for f in recent_files:
+            readme_content += f"- **[{f['date']}](content/{f['filename']})** - {f['title']}\\n"
+            if f['summary']:
+                readme_content += f"  - {f['summary']}\\n"
+        
+        readme_content += "\\n---\\n\\n"
+        
+        # 按月份分类
+        readme_content += "## 📂 按月份浏览\\n\\n"
+        for year_month in sorted(grouped.keys(), reverse=True):
+            readme_content += f"### {year_month}\\n\\n"
+            for f in grouped[year_month]:
+                readme_content += f"- [{f['date']}](content/{f['filename']}) - {f['title']}\\n"
+            readme_content += "\\n"
+        
+        # 统计信息
+        readme_content += "---\\n\\n"
+        readme_content += "## 📊 统计信息\\n\\n"
+        readme_content += f"- 📄 总资讯数：**{len(files)}** 篇\\n"
+        if files:
+            readme_content += f"- 📅 最早日期：{files[-1]['date']}\\n"
+            readme_content += f"- 🔄 最近更新：{files[0]['date']}\\n"
+        readme_content += "\\n"
+        
+        # 标签
+        readme_content += "## 🏷️ 标签\\n\\n"
+        readme_content += "`#ai` `#artificial-intelligence` `#daily-news` `#tech` `#machine-learning`\\n"
+        readme_content += "\\n"
+        
+        # 自动生成时间
+        readme_content += "---\\n\\n"
+        readme_content += f"*📅 本页面由 GitHub Actions 自动生成于 {datetime.now().strftime(\"%Y-%m-%d %H:%M:%S UTC\")}*\\n"
+        
+        # 写入README
+        with open('README.md', 'w', encoding='utf-8') as f:
+            f.write(readme_content)
+        
+        print(f"✅ README.md 已生成，共 {len(files)} 篇资讯")
+        EOF
+    
+    - name: Check for changes
+      id: check_changes
+      run: |
+        if git diff --quiet; then
+          echo "changed=false" >> $GITHUB_OUTPUT
+          echo "没有需要提交的更改"
+        else
+          echo "changed=true" >> $GITHUB_OUTPUT
+          echo "检测到更改，准备提交"
+        fi
+    
+    - name: Commit and push changes
+      if: steps.check_changes.outputs.changed == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add README.md
+        git commit -m "📚 Auto-update README [$(date +'%Y-%m-%d')]"
+        git push
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
